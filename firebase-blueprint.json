@@ -1,0 +1,350 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the EntraHomes platform (Tenant, Landlord, or Admin).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "The unique Firebase Auth ID of the user."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "The user's email address."
+        },
+        "name": {
+          "type": "string",
+          "description": "The user's full name."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["tenant", "landlord", "admin"],
+          "description": "The user's role on the platform."
+        },
+        "trustScore": {
+          "type": "number",
+          "description": "The user's trust and reputation score (0-100)."
+        },
+        "isVerified": {
+          "type": "boolean",
+          "description": "Whether the user's identity has been verified."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the user account was created."
+        }
+      },
+      "required": ["uid", "email", "name", "role", "createdAt"]
+    },
+    "Property": {
+      "title": "Property",
+      "description": "A rental property listed by a landlord.",
+      "type": "object",
+      "properties": {
+        "landlordId": {
+          "type": "string",
+          "description": "The UID of the landlord who owns this property."
+        },
+        "title": {
+          "type": "string",
+          "description": "The title of the property listing."
+        },
+        "description": {
+          "type": "string",
+          "description": "A detailed description of the property."
+        },
+        "location": {
+          "type": "string",
+          "description": "The physical location/address of the property."
+        },
+        "price": {
+          "type": "number",
+          "description": "The monthly rent price."
+        },
+        "propertyType": {
+          "type": "string",
+          "enum": ["apartment", "house", "studio"],
+          "description": "The type of property."
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "An array of image URLs for the property."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["available", "rented"],
+          "description": "The current status of the property."
+        },
+        "tenantId": {
+          "type": "string",
+          "description": "The UID of the current tenant, if rented."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the property listing was created."
+        }
+      },
+      "required": ["landlordId", "title", "description", "location", "price", "propertyType", "status", "createdAt"]
+    },
+    "SavedProperty": {
+      "title": "SavedProperty",
+      "description": "A property saved by a tenant.",
+      "type": "object",
+      "properties": {
+        "tenantId": {
+          "type": "string",
+          "description": "The UID of the tenant who saved the property."
+        },
+        "propertyId": {
+          "type": "string",
+          "description": "The ID of the saved property."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the property was saved."
+        }
+      },
+      "required": ["tenantId", "propertyId", "createdAt"]
+    },
+    "Lease": {
+      "title": "Lease",
+      "description": "A rental agreement between a landlord and a tenant.",
+      "type": "object",
+      "properties": {
+        "propertyId": {
+          "type": "string",
+          "description": "The ID of the rented property."
+        },
+        "tenantId": {
+          "type": "string",
+          "description": "The UID of the tenant."
+        },
+        "landlordId": {
+          "type": "string",
+          "description": "The UID of the landlord."
+        },
+        "startDate": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The start date of the lease."
+        },
+        "endDate": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The end date of the lease."
+        },
+        "rentAmount": {
+          "type": "number",
+          "description": "The monthly rent amount."
+        },
+        "depositAmount": {
+          "type": "number",
+          "description": "The required security deposit."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "active", "terminated", "completed"],
+          "description": "The status of the lease."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the lease was created."
+        }
+      },
+      "required": ["propertyId", "tenantId", "landlordId", "startDate", "endDate", "rentAmount", "status", "createdAt"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "A review left by a tenant or landlord.",
+      "type": "object",
+      "properties": {
+        "reviewerId": {
+          "type": "string",
+          "description": "The UID of the user leaving the review."
+        },
+        "revieweeId": {
+          "type": "string",
+          "description": "The UID of the user being reviewed."
+        },
+        "propertyId": {
+          "type": "string",
+          "description": "The ID of the property associated with the review (optional)."
+        },
+        "rating": {
+          "type": "number",
+          "description": "The rating score (1-5)."
+        },
+        "comment": {
+          "type": "string",
+          "description": "The review text."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["tenant_review", "landlord_review"],
+          "description": "The type of review."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the review was created."
+        }
+      },
+      "required": ["reviewerId", "revieweeId", "rating", "comment", "type", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "A notification for a user.",
+      "type": "object",
+      "properties": {
+        "recipientId": {
+          "type": "string",
+          "description": "The UID of the user receiving the notification."
+        },
+        "senderName": {
+          "type": "string",
+          "description": "The name of the user who triggered the notification."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["message", "listing"],
+          "description": "The type of notification."
+        },
+        "messageSnippet": {
+          "type": "string",
+          "description": "A short snippet of the message or notification content."
+        },
+        "isRead": {
+          "type": "boolean",
+          "description": "Whether the notification has been read."
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the notification was created."
+        }
+      },
+      "required": ["recipientId", "senderName", "type", "messageSnippet", "isRead", "timestamp"]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "A chat conversation between a tenant and a landlord.",
+      "type": "object",
+      "properties": {
+        "propertyId": {
+          "type": "string",
+          "description": "The ID of the property being discussed."
+        },
+        "propertyTitle": {
+          "type": "string",
+          "description": "The title of the property."
+        },
+        "tenantId": {
+          "type": "string",
+          "description": "The UID of the tenant."
+        },
+        "tenantName": {
+          "type": "string",
+          "description": "The name of the tenant."
+        },
+        "landlordId": {
+          "type": "string",
+          "description": "The UID of the landlord."
+        },
+        "landlordName": {
+          "type": "string",
+          "description": "The name of the landlord."
+        },
+        "lastMessage": {
+          "type": "string",
+          "description": "The text of the last message sent."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the conversation was last updated."
+        }
+      },
+      "required": ["propertyId", "propertyTitle", "tenantId", "tenantName", "landlordId", "landlordName", "updatedAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A message within a conversation.",
+      "type": "object",
+      "properties": {
+        "senderId": {
+          "type": "string",
+          "description": "The UID of the user who sent the message."
+        },
+        "text": {
+          "type": "string",
+          "description": "The message text."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the message was sent."
+        }
+      },
+      "required": ["senderId", "text", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/notifications/{notificationId}": {
+      "schema": {
+        "$ref": "#/entities/Notification"
+      },
+      "description": "Stores user notifications."
+    },
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/User"
+      },
+      "description": "Stores user profiles."
+    },
+    "/properties/{propertyId}": {
+      "schema": {
+        "$ref": "#/entities/Property"
+      },
+      "description": "Stores property listings."
+    },
+    "/saved_properties/{savedPropertyId}": {
+      "schema": {
+        "$ref": "#/entities/SavedProperty"
+      },
+      "description": "Stores properties saved by tenants."
+    },
+    "/leases/{leaseId}": {
+      "schema": {
+        "$ref": "#/entities/Lease"
+      },
+      "description": "Stores rental agreements between landlords and tenants."
+    },
+    "/reviews/{reviewId}": {
+      "schema": {
+        "$ref": "#/entities/Review"
+      },
+      "description": "Stores reviews for tenants and landlords."
+    },
+    "/conversations/{conversationId}": {
+      "schema": {
+        "$ref": "#/entities/Conversation"
+      },
+      "description": "Stores chat conversations."
+    },
+    "/conversations/{conversationId}/messages/{messageId}": {
+      "schema": {
+        "$ref": "#/entities/Message"
+      },
+      "description": "Stores messages within a conversation."
+    }
+  }
+}
