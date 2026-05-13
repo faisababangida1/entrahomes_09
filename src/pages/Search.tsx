@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { collection, query, where, limit, onSnapshot, getDoc, doc, getDocs, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, limit, getDoc, doc, getDocs, addDoc, deleteDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Search as SearchIcon, MapPin, DollarSign, Home as HomeIcon, Building, Warehouse, Store, Heart, ShieldCheck, Filter, Bed, Sofa, X, Sparkles } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -79,57 +79,61 @@ export default function Search() {
                             (baths !== 'any' ? 1 : 0);
 
   useEffect(() => {
-    const q = query(
-      collection(db, 'properties'),
-      where('status', '==', 'available')
-    );
-    
-    const unsubscribe = onSnapshot(q, async (querySnapshot) => {
-      const props: Property[] = [];
-      
-      for (const document of querySnapshot.docs) {
-        const data = document.data();
-        let trustScore = 50;
-        let isVerified = false;
+    const fetchProperties = async () => {
+      setLoading(true);
+      try {
+        const url = new URL('/api/properties', window.location.origin);
+        url.searchParams.set('status', 'available');
+        if (activeCategory !== 'all') {
+          url.searchParams.set('category', activeCategory);
+        }
         
-        try {
-          if (data.landlordId && data.landlordId !== 'external_network') {
-            const landlordDoc = await getDoc(doc(db, 'users', data.landlordId));
-            if (landlordDoc.exists()) {
-              const landlordData = landlordDoc.data();
-              trustScore = landlordData.trustScore ?? 50;
-              isVerified = landlordData.isVerified ?? false;
+        const response = await fetch(url.toString());
+        if (!response.ok) throw new Error('Failed to fetch properties');
+        const props: Property[] = await response.json();
+        
+        // Fetch landlord trust info (Firebase)
+        const enrichedProps = await Promise.all(props.map(async (p) => {
+          let trustScore = 50;
+          let isVerified = false;
+          
+          try {
+            if (p.landlordId && p.landlordId !== 'external_network') {
+              const landlordDoc = await getDoc(doc(db, 'users', p.landlordId));
+              if (landlordDoc.exists()) {
+                const landlordData = landlordDoc.data();
+                trustScore = landlordData.trustScore ?? 50;
+                isVerified = landlordData.isVerified ?? false;
+              }
             }
+          } catch (e) {
+            console.error("Failed to fetch landlord trust info", e);
           }
-        } catch (e) {
-          console.error("Failed to fetch landlord trust info", e);
-        }
 
-        props.push({ 
-          id: document.id, 
-          ...data,
-          landlordTrustScore: trustScore,
-          landlordVerified: isVerified
-        } as Property);
+          return { 
+            ...p,
+            landlordTrustScore: trustScore,
+            landlordVerified: isVerified
+          };
+        }));
+
+        enrichedProps.forEach(p => {
+          if (!searchShuffleSeed.has(p.id)) {
+            searchShuffleSeed.set(p.id, Math.random());
+          }
+        });
+        
+        cachedSearchProperties = enrichedProps;
+        setProperties(enrichedProps);
+      } catch (error) {
+        console.error("Error fetching properties:", error);
+      } finally {
+        setLoading(false);
       }
-      
-      // Stable shuffle: assign a random number to each new property
-      props.forEach(p => {
-        if (!searchShuffleSeed.has(p.id)) {
-          searchShuffleSeed.set(p.id, Math.random());
-        }
-      });
-      
-      cachedSearchProperties = props;
-      setProperties(props);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'properties');
-      setLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
-  }, []);
+    fetchProperties();
+  }, [activeCategory]);
 
   // Fetch saved properties for the current user
   useEffect(() => {

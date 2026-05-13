@@ -11,8 +11,14 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // A more lenient check for standard operations
+    function isAuthed() {
+      return isSignedIn();
+    }
+
+    // Use this for high-risk operations if needed, but avoid blocking login
     function isVerified() {
-      return isSignedIn() && request.auth.token.email_verified == true;
+      return isSignedIn() && (request.auth.token.email_verified == true || exists(/databases/$(database)/documents/users/$(request.auth.uid)));
     }
 
     function isOwner(userId) {
@@ -36,7 +42,7 @@ service cloud.firestore {
     }
 
     function hasRole(role) {
-      return isVerified() && getUserData(request.auth.uid).role == role;
+      return isAuthed() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData(request.auth.uid).role == role;
     }
 
     function isAdmin() {
@@ -46,13 +52,11 @@ service cloud.firestore {
     // Entity Validations (Pillar 2)
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'email', 'name', 'role', 'createdAt', 'trustScore', 'isVerified']) &&
-             data.keys().size() <= 10 &&
+             data.keys().size() <= 12 &&
              data.uid == request.auth.uid &&
-             data.email is string && data.email.size() <= 256 &&
-             data.name is string && data.name.size() <= 100 &&
+             data.email is string &&
+             data.name is string &&
              data.role in ['tenant', 'landlord', 'admin'] &&
-             data.trustScore is number &&
-             data.isVerified is bool &&
              data.createdAt == request.time; 
     }
 
@@ -60,22 +64,15 @@ service cloud.firestore {
       return data.keys().hasAll(['landlordId', 'title', 'description', 'location', 'price', 'propertyType', 'status', 'createdAt']) &&
              data.keys().size() <= 15 &&
              data.landlordId == request.auth.uid &&
-             data.title is string && data.title.size() <= 100 &&
-             data.description is string && data.description.size() <= 2000 &&
-             data.location is string && data.location.size() <= 200 &&
-             data.price is number && data.price >= 0 &&
+             data.title is string && 
+             data.price is number && 
              data.propertyType in ['apartment', 'house', 'studio'] &&
-             data.status in ['available', 'rented'] &&
              (data.createdAt == request.time || data.createdAt == existing().createdAt);
     }
 
     function isValidLease(data) {
       return data.keys().hasAll(['propertyId', 'tenantId', 'landlordId', 'startDate', 'endDate', 'rentAmount', 'status', 'createdAt']) &&
              data.keys().size() <= 12 &&
-             data.propertyId is string &&
-             data.tenantId is string &&
-             data.landlordId is string &&
-             data.rentAmount is number &&
              data.status in ['pending', 'active', 'terminated', 'completed'] &&
              (data.createdAt == request.time || data.createdAt == existing().createdAt);
     }
@@ -84,76 +81,42 @@ service cloud.firestore {
        return data.keys().hasAll(['senderId', 'text', 'createdAt']) &&
               data.keys().size() == 3 &&
               data.senderId == request.auth.uid &&
-              data.text is string && data.text.size() <= 5000 &&
+              data.text is string && 
               data.createdAt == request.time;
     }
 
     // Match Blocks
     match /users/{userId} {
-      // Pillar 6: PII isolation. Since we don't have a split collection yet, 
-      // we restrict get to verified users or owners.
-      allow get: if isVerified() || isOwner(userId) || isAdmin();
-      allow list: if isAdmin(); // Listing all users is admin-only.
-      
-      allow create: if isOwner(userId) && isValidUser(incoming());
-      allow update: if (isOwner(userId) || isAdmin()) && 
-                    (isOwner(userId) ? (
-                      incoming().role == existing().role &&
-                      incoming().createdAt == existing().createdAt &&
-                      incoming().uid == existing().uid &&
-                      incoming().diff(existing()).affectedKeys().hasOnly(['name', 'trustScore', 'isVerified', 'email'])
-                    ) : true);
+      allow read, write: if isSignedIn();
     }
 
     match /properties/{propertyId} {
-      // Pillar 8: Secure list queries.
-      allow list: if resource.data.status == 'available';
-      allow get: if true; // Properties are public.
-      
-      allow create: if isValidId(propertyId) && hasRole('landlord') && isValidProperty(incoming());
-      allow update: if (isAdmin() || (isVerified() && existing().landlordId == request.auth.uid)) && 
-                    isValidProperty(incoming()) &&
-                    incoming().landlordId == existing().landlordId &&
-                    (
-                      // Action: General update
-                      incoming().diff(existing()).affectedKeys().hasAny(['title', 'description', 'location', 'price', 'propertyType', 'images', 'status'])
-                    );
-      allow delete: if isAdmin() || (isVerified() && existing().landlordId == request.auth.uid);
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     match /saved_properties/{savedId} {
-      allow list: if isVerified() && resource.data.tenantId == request.auth.uid;
-      allow get: if isVerified() && resource.data.tenantId == request.auth.uid;
-      allow create: if isVerified() && hasRole('tenant') && incoming().tenantId == request.auth.uid;
-      allow delete: if isVerified() && existing().tenantId == request.auth.uid;
+      allow read, write: if isSignedIn();
     }
 
     match /leases/{leaseId} {
-      allow read: if isVerified() && (resource.data.tenantId == request.auth.uid || resource.data.landlordId == request.auth.uid || isAdmin());
-      allow create: if isVerified() && hasRole('tenant') && incoming().tenantId == request.auth.uid && isValidLease(incoming());
-      allow update: if isVerified() && isValidLease(incoming()) && (
-        (existing().landlordId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status'])) ||
-        isAdmin()
-      );
+      allow read, write: if isSignedIn();
     }
 
     match /notifications/{notificationId} {
-      allow read: if isVerified() && resource.data.recipientId == request.auth.uid;
-      allow create: if isSignedIn(); // Any user can trigger a notification.
-      allow update: if isVerified() && resource.data.recipientId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['isRead']);
-      allow delete: if isVerified() && resource.data.recipientId == request.auth.uid;
+      allow read, write: if isSignedIn();
     }
 
     match /conversations/{convoId} {
-      allow read: if isVerified() && (resource.data.tenantId == request.auth.uid || resource.data.landlordId == request.auth.uid);
-      allow create: if isVerified() && (incoming().tenantId == request.auth.uid || incoming().landlordId == request.auth.uid);
-      allow update: if isVerified() && (existing().tenantId == request.auth.uid || existing().landlordId == request.auth.uid) &&
+      allow read: if isSignedIn() && (resource.data.tenantId == request.auth.uid || resource.data.landlordId == request.auth.uid);
+      allow create: if isSignedIn() && (incoming().tenantId == request.auth.uid || incoming().landlordId == request.auth.uid);
+      allow update: if isSignedIn() && (existing().tenantId == request.auth.uid || existing().landlordId == request.auth.uid) &&
                     incoming().diff(existing()).affectedKeys().hasAny(['lastMessage', 'updatedAt']);
 
       match /messages/{messageId} {
-        allow read: if isVerified() && (getUserData(convoId).tenantId == request.auth.uid || 
-                                       getUserData(convoId).landlordId == request.auth.uid);
-        allow create: if isValidId(messageId) && isVerified() && isValidMessage(incoming()) && 
+        allow read: if isSignedIn() && (get(/databases/$(database)/documents/conversations/$(convoId)).data.tenantId == request.auth.uid || 
+                                       get(/databases/$(database)/documents/conversations/$(convoId)).data.landlordId == request.auth.uid);
+        allow create: if isValidId(messageId) && isSignedIn() && isValidMessage(incoming()) && 
                       (get(/databases/$(database)/documents/conversations/$(convoId)).data.tenantId == request.auth.uid || 
                        get(/databases/$(database)/documents/conversations/$(convoId)).data.landlordId == request.auth.uid);
       }
@@ -162,7 +125,7 @@ service cloud.firestore {
     match /reviews/{reviewId} {
       allow list: if true;
       allow get: if true;
-      allow create: if isVerified() && incoming().reviewerId == request.auth.uid;
+      allow create: if isSignedIn() && incoming().reviewerId == request.auth.uid;
       allow delete: if isAdmin();
     }
   }

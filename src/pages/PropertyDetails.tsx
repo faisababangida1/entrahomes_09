@@ -60,13 +60,14 @@ export default function PropertyDetails() {
       return;
     }
 
-    const docRef = doc(db, 'properties', id);
-    const unsubscribe = onSnapshot(docRef, async (docSnap) => {
-      if (docSnap.exists()) {
-        const propData = { id: docSnap.id, ...(docSnap.data() as any) };
+    const fetchProperty = async () => {
+      try {
+        const response = await fetch(`/api/properties/${id}`);
+        if (!response.ok) throw new Error('Failed to fetch property');
+        const propData = await response.json();
         setProperty(propData);
         
-        // Fetch landlord details (only if not already fetched or if landlordId changed)
+        // Fetch landlord details (Still from Firebase for now)
         if (!landlord || landlord.uid !== propData.landlordId) {
           try {
             const landlordRef = doc(db, 'users', propData.landlordId);
@@ -93,17 +94,14 @@ export default function PropertyDetails() {
             console.error("Error checking saved status:", error);
           }
         }
-      } else {
-        console.log("No such document!");
-        setProperty(null);
+      } catch (error) {
+        console.error("Error fetching property:", error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, `properties/${id}`);
-      setLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
+    fetchProperty();
   }, [id, user, profile]);
 
   const handleSaveProperty = async () => {

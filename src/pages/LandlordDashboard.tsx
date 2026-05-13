@@ -46,17 +46,21 @@ export default function LandlordDashboard() {
   useEffect(() => {
     if (!user) return;
 
-    // Fetch properties
-    const propsQuery = query(collection(db, 'properties'), where('landlordId', '==', user.uid));
-    const unsubscribeProps = onSnapshot(propsQuery, (snapshot) => {
-      const p: Property[] = [];
-      snapshot.forEach(doc => p.push({ id: doc.id, ...doc.data() } as Property));
-      setProperties(p);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'properties');
-    });
+    // Fetch properties from LibSQL instead of Firestore
+    const fetchProperties = async () => {
+      try {
+        const response = await fetch(`/api/properties/landlord/${user.uid}`);
+        if (!response.ok) throw new Error('Failed to fetch properties');
+        const p: Property[] = await response.json();
+        setProperties(p);
+      } catch (error) {
+        console.error("Error fetching properties:", error);
+      }
+    };
 
-    // Fetch leases
+    fetchProperties();
+
+    // Fetch leases (Still from Firestore for now)
     const leasesQuery = query(collection(db, 'leases'), where('landlordId', '==', user.uid));
     const unsubscribeLeases = onSnapshot(leasesQuery, async (snapshot) => {
       const l: any[] = [];
@@ -108,14 +112,27 @@ export default function LandlordDashboard() {
         price: parsedPrice,
         propertyType: newProp.propertyType,
         status: 'available',
-        createdAt: serverTimestamp()
+        images: newProp.imageUrls
       };
 
-      if (newProp.imageUrls.length > 0) {
-        propertyData.images = newProp.imageUrls;
+      const response = await fetch('/api/properties', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(propertyData)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to add property");
       }
 
-      await addDoc(collection(db, 'properties'), propertyData);
+      await response.json();
+      
+      // Refresh properties list
+      const updatedResponse = await fetch(`/api/properties/landlord/${user.uid}`);
+      if (updatedResponse.ok) {
+        setProperties(await updatedResponse.json());
+      }
       setShowAddModal(false);
       setNewProp({ title: '', description: '', location: '', price: '', propertyType: 'apartment', imageUrls: [] });
     } catch (error: any) {
@@ -128,17 +145,28 @@ export default function LandlordDashboard() {
 
   const approveLease = async (leaseId: string, propertyId: string) => {
     try {
-      // Approve the lease
+      // Approve the lease (Firestore)
       const leaseRef = doc(db, 'leases', leaseId);
       await updateDoc(leaseRef, {
         status: 'active'
       });
 
-      // Mark property as rented
-      const propertyRef = doc(db, 'properties', propertyId);
-      await updateDoc(propertyRef, {
-        status: 'rented'
-      });
+      // Mark property as rented (LibSQL API)
+      const propResponse = await fetch(`/api/properties/${propertyId}`);
+      if (propResponse.ok) {
+        const prop = await propResponse.json();
+        await fetch(`/api/properties/${propertyId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...prop, status: 'rented' })
+        });
+        
+        // Refresh properties
+        const updatedResponse = await fetch(`/api/properties/landlord/${user.uid}`);
+        if (updatedResponse.ok) {
+          setProperties(await updatedResponse.json());
+        }
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `leases/${leaseId}`);
     }
@@ -152,11 +180,16 @@ export default function LandlordDashboard() {
   const handleDeleteProperty = async () => {
     if (propertyToDelete) {
       try {
-        await deleteDoc(doc(db, 'properties', propertyToDelete));
+        const response = await fetch(`/api/properties/${propertyToDelete}`, {
+          method: 'DELETE'
+        });
+        if (!response.ok) throw new Error("Failed to delete property");
+        
+        setProperties(prev => prev.filter(p => p.id !== propertyToDelete));
         setShowDeleteModal(false);
         setPropertyToDelete(null);
       } catch (error) {
-        handleFirestoreError(error, OperationType.DELETE, `properties/${propertyToDelete}`);
+        console.error("Error deleting property:", error);
       }
     }
   };
