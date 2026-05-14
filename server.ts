@@ -328,3 +328,6 @@ async function startServer() {
 }
 
 startServer();
+// Add this at the very end so Vercel can find the app
+export default app;
+
